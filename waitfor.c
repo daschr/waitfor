@@ -232,14 +232,18 @@ int main(int argc, char *argv[]){
 		if(set_ip_addr()){
 			if(pingloop() != 0)
 				exit_code=1;
-		}else
+		}else{
 			HELP("Error: erroneous host\0");
+			exit_code=1;
+		}
 	}else{	
 		if(set_ip_addr()){
 			if(connectloop() != 0)
 				exit_code=1;
-		}else
+		}else{
 			HELP("Error: erroneous host or port\0");
+			exit_code=1;
+		}
 	}
 	return exit_code;
 }
