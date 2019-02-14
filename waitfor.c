@@ -60,13 +60,11 @@ int8_t connectloop(void){
 
 	if(config.wait_timeout != 0){
 		time_t start_time=time(NULL);
-		puts("started...");
 		while(connect(socket_d,host.addr,host.addrlen)<0){
 			if(time(NULL) - start_time > config.wait_timeout){ 
 				ret_val=2;
 				break;
 			}
-			printf("start_time=%ld diff=%ld wait_timeout=%ld\n",start_time,time(NULL) - start_time,config.wait_timeout);
 			usleep(config.sleep_time);
 		}
 	}else
