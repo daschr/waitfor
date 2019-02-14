@@ -209,7 +209,6 @@ int main(int argc, char *argv[]){
 
 			case 't':
 				if((buf=atol(optarg)) != -1){
-					printf("buf: %ld\n",buf);
 					config.wait_timeout=buf;
 				}else{
 					HELP("Error: -t: invalid argument!\0");
