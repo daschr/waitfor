@@ -6,28 +6,37 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <oping.h>
 #include <errno.h>
 extern int h_errno;
-#include <oping.h>
 
-#define CON_SLEEP_TIME 1
-#define CUS_PING_SLEEP 200
-#define CUS_PING_TIMEOUT 1
 #define HELP(X) helpmsg(argv[0],X)
+
+struct config{
+	unsigned long sleep_time;
+	unsigned long ping_timeout;
+	unsigned long socket_timeout;
+	unsigned long wait_timeout;
+}config;
 
 struct host{
 	char *raw_host;
+	char *raw_port;
 	void *ip;
 	struct sockaddr *addr;
 	socklen_t addrlen;
 	int ip_type;
-	unsigned int port;
-	unsigned long wait_timeout;
-};
+} host;
 
 
 void helpmsg(char *pname,char *s){
-	printf("Usage: %s ?[-t[timeout]] [host] ?[tcp port]\n",pname);
+printf("Usage: %s <options> [host]\n\
+\t -h: display this help message\n\
+\t -p[port]: set tcp port trying to connect to\n\
+\t -t[secs]: set timeout in seconds\n\
+\t -s[msecs]: set sleep time between connection and ping attempts\n\
+\t -1[secs]: set ping timeout\n\
+\t -2[msecs]: set socket timeout\n",pname);
 	if(s != NULL){
 		fprintf(stderr,"%s",s);
 	}
@@ -35,35 +44,41 @@ void helpmsg(char *pname,char *s){
 }
 
 
-int8_t connectloop(struct host **h){
+int8_t connectloop(void){
 	int socket_d;
 	int8_t ret_val=0;
-
-	socket_d=socket((*h)->ip_type,SOCK_STREAM,0);
+	struct timeval timeout;
+	timeout.tv_sec  = config.socket_timeout/1000; 
+	timeout.tv_usec = config.socket_timeout%1000;
+	socket_d=socket(host.ip_type,SOCK_STREAM,0);
 	if(socket_d == -1){
 		fprintf(stderr,"Error: could not create socket!\n");
 		return 1;
 	}
-	if((*h)->wait_timeout != 0){
+	setsockopt(socket_d, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
+
+	if(config.wait_timeout != 0){
 		time_t start_time=time(NULL);
-		while(connect(socket_d,(*h)->addr,(*h)->addrlen)<0){
-			if(time(NULL) - start_time > (*h)->wait_timeout){ 
+		puts("started...");
+		while(connect(socket_d,host.addr,host.addrlen)<0){
+			if(time(NULL) - start_time > config.wait_timeout){ 
 				ret_val=2;
 				break;
 			}
-			sleep(CON_SLEEP_TIME);
+			printf("start_time=%ld diff=%ld wait_timeout=%ld\n",start_time,time(NULL) - start_time,config.wait_timeout);
+			usleep(config.sleep_time);
 		}
 	}else
-		while(connect(socket_d,(*h)->addr,(*h)->addrlen)<0)
-			sleep(CON_SLEEP_TIME);
+		while(connect(socket_d,host.addr,host.addrlen)<0)
+			usleep(config.sleep_time);
 		
 	close(socket_d);
 	return ret_val;
 } 
 
 
-int8_t pingloop(struct host **h){
-	long timeout=CUS_PING_TIMEOUT;
+int8_t pingloop(void){
 	int8_t ret_val=0;
 
 	pingobj_t *ping_inst= ping_construct();
@@ -72,28 +87,28 @@ int8_t pingloop(struct host **h){
 		free(ping_inst);
 		return 1;
 	}
-	if(ping_setopt(ping_inst,PING_OPT_TIMEOUT,&timeout) != 0){
+	if(ping_setopt(ping_inst,PING_OPT_TIMEOUT,&config.ping_timeout) != 0){
 		fprintf(stderr,"%s\nError: could not instanciate ping timeout!\n",ping_get_error(ping_inst));
 		free(ping_inst);
 		return 1;
 	}
-	if(ping_setopt(ping_inst,PING_OPT_AF,&((*h)->ip_type)) != 0){
+	if(ping_setopt(ping_inst,PING_OPT_AF,&(host.ip_type)) != 0){
 		fprintf(stderr,"%s\nError: could not set af type!\n",ping_get_error(ping_inst));
 		free(ping_inst);
 		return 1;
 	}
-	if(ping_host_add(ping_inst,(*h)->raw_host) != 0){
+	if(ping_host_add(ping_inst,host.raw_host) != 0){
 		fprintf(stderr,"%s\nError: could not instanciate host to ping!\n",ping_get_error(ping_inst));
 		free(ping_inst);
 		return 1;
 	}
-	if((*h)->wait_timeout != 0){
+	if(config.wait_timeout != 0){
 		time_t start_time=time(NULL);
 		while(1){
 			register int e= ping_send(ping_inst);
 			if(e >=1) //host is up
 				break;
-			else if(time(NULL) -start_time > (*h)->wait_timeout){// timeout arrived
+			else if(time(NULL) -start_time > config.wait_timeout){// timeout arrived
 				ret_val=2;
 				break;
 			}else if(e < 0){
@@ -101,7 +116,7 @@ int8_t pingloop(struct host **h){
 				ret_val=1;
 				break;
 			}
-			usleep(CUS_PING_SLEEP);
+			usleep(config.sleep_time);
 		}
 	}else{
 		while(1){
@@ -113,16 +128,15 @@ int8_t pingloop(struct host **h){
 				ret_val=1;
 				break;
 			}
-			usleep(CUS_PING_SLEEP);
+			usleep(config.sleep_time);
 		}
 	}
-	ping_host_remove(ping_inst,(*h)->raw_host);
+	ping_host_remove(ping_inst,host.raw_host);
 	free(ping_inst);
 	return ret_val;
 }
 
-int8_t set_ip_addr(struct host **host,char *s,char *p){
-	(*host)->raw_host=s; // since it's just used with argv, it's ok
+int8_t set_ip_addr(void){
 	struct addrinfo hints;
 	struct addrinfo	*res;
 	memset(&hints,0,sizeof(struct addrinfo));
@@ -130,76 +144,105 @@ int8_t set_ip_addr(struct host **host,char *s,char *p){
 	hints.ai_socktype = SOCK_STREAM; 
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;   
-	
-	if( getaddrinfo(s,p,&hints,&res) != 0 || res == NULL)
+	if( getaddrinfo(host.raw_host,host.raw_port,&hints,&res) != 0 || res == NULL)
 		return 0;
-	(*host)->addr=res->ai_addr;
-	(*host)->addrlen=res->ai_addrlen;
-	(*host)->ip_type=res->ai_family;
+	host.addr=res->ai_addr;
+	host.addrlen=res->ai_addrlen;
+	host.ip_type=res->ai_family;
 	
 	return 1;
 }
 
-int8_t parse_timeout(struct host **host,char *s){
+int8_t parse_timeout(char *s){
 	unsigned long timeout;
 	if(sscanf(s,"-t%lu",&timeout) == 1){
-		(*host)->wait_timeout=timeout;
+		config.wait_timeout=timeout;
 		return 1;
 	}
 	return 0;
 }
 
 int main(int argc, char *argv[]){
-	struct host *h=malloc(sizeof(struct host));	
-	int8_t exit_code=0;
+	if(argc == 1){
+		HELP(NULL);
+		return 1;
+	}
 
-	switch(argc){
-		case 1:
-			helpmsg(argv[0],"Error: no arguments given!\0");
-			break;
-		case 2:
-			h->wait_timeout=0;
-			if(set_ip_addr(&h,argv[1],NULL)){
-				if(pingloop(&h) != 0){
+	int8_t exit_code=0;
+	config.sleep_time=200;
+	config.ping_timeout=1;
+	config.wait_timeout=0;
+	config.socket_timeout=2000;
+	host.raw_port=NULL;
+	host.raw_host=argv[argc-1];
+	register int op;
+	register long buf;
+
+	while((op=getopt(argc,argv,"hs:1:2:t:p:")) != -1){
+		switch(op){
+			case 'h':
+				HELP(NULL);
+				exit_code=1;
+				break;
+			case 's':
+				if((buf=atol(optarg)) != -1)
+					config.sleep_time=buf;
+				else{
+					HELP("Error: -s: invalid argument!\0");
 					exit_code=1;
 				}
-			}else
-				HELP("Error: erroneous host\0");
-			break;
-		case 3:
-			h->wait_timeout=0;
-			if(parse_timeout(&h,argv[1])){
-				if(set_ip_addr(&h,argv[2],NULL)){
-					if(pingloop(&h) != 0){
-						exit_code=1;
-					}
-				}else 
-					HELP("Error: erroneous host\0");
-			}else{
-				if(set_ip_addr(&h,argv[1],argv[2])){
-					if(connectloop(&h) != 0){
-						exit_code=1;
-					}
-				}else 
-					HELP("Error: erroneous host or port\0");
-			}	
-			break;
-		case 4:
-			h->wait_timeout=0;
-			if(parse_timeout(&h,argv[1])){
-				if(set_ip_addr(&h,argv[2],argv[3])){
-					if(connectloop(&h) != 0){
-						exit_code=1;
-					}
-				}else 
-					HELP("Error: erroneous host or port\0");
-			}else
-					HELP("Error: invalid argument!\0");
-				
-			break;
-		default:
-			helpmsg(argv[0],"Error: more arguments than expected!\0");
+				break;
+			case '1':
+				if((buf=atol(optarg)) != -1)
+					config.ping_timeout=buf;
+				else{
+					HELP("Error: -1: invalid argument!\0");
+					exit_code=1;
+				}
+				break;
+			case '2':
+				if((buf=atol(optarg)) != -1)
+					config.socket_timeout=buf;
+				else{
+					HELP("Error: -2: invalid argument!\0");
+					exit_code=1;
+				}
+				break;
+
+			case 't':
+				if((buf=atol(optarg)) != -1){
+					printf("buf: %ld\n",buf);
+					config.wait_timeout=buf;
+				}else{
+					HELP("Error: -t: invalid argument!\0");
+					exit_code=1;
+				}
+				break;
+			case 'p':
+				host.raw_port=optarg;
+				break;
+			case '?':
+				exit_code=1;
+				break;
+			default:
+				exit_code=1;
+				HELP(NULL);
+		}
 	}
-	free(h);
+	if(exit_code != 0)
+		return exit_code;
+	if(host.raw_port==NULL){
+		if(set_ip_addr()){
+			if(pingloop() != 0)
+				exit_code=1;
+		}else
+			HELP("Error: erroneous host\0");
+	}else{	
+		if(set_ip_addr()){
+			if(connectloop() != 0)
+				exit_code=1;
+		}else
+			HELP("Error: erroneous host or port\0");
+	}
 	return exit_code;
 }
