@@ -30,7 +30,7 @@ struct host{
 
 
 void helpmsg(char *pname,char *s){
-printf("Usage: %s <options> [host]\n\
+printf("Usage: %s <options> [host] [?port]\n\
 \t -h: display this help message\n\
 \t -t[secs]: set timeout in seconds\n\
 \t -s[msecs]: set sleep time between connection/ping attempts\n\
