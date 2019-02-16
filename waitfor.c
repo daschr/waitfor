@@ -32,9 +32,8 @@ struct host{
 void helpmsg(char *pname,char *s){
 printf("Usage: %s <options> [host]\n\
 \t -h: display this help message\n\
-\t -p[port]: set tcp port trying to connect to\n\
 \t -t[secs]: set timeout in seconds\n\
-\t -s[msecs]: set sleep time between connection and ping attempts\n\
+\t -s[msecs]: set sleep time between connection/ping attempts\n\
 \t -1[secs]: set ping timeout\n\
 \t -2[msecs]: set socket timeout\n",pname);
 	if(s != NULL){
@@ -171,12 +170,10 @@ int main(int argc, char *argv[]){
 	config.ping_timeout=1;
 	config.wait_timeout=0;
 	config.socket_timeout=2000;
-	host.raw_port=NULL;
-	host.raw_host=argv[argc-1];
 	register int op;
 	register long buf;
 
-	while((op=getopt(argc,argv,"hs:1:2:t:p:")) != -1){
+	while((op=getopt(argc,argv,"hs:1:2:t:")) != -1){
 		switch(op){
 			case 'h':
 				HELP(NULL);
@@ -215,9 +212,6 @@ int main(int argc, char *argv[]){
 					exit_code=1;
 				}
 				break;
-			case 'p':
-				host.raw_port=optarg;
-				break;
 			case '?':
 				exit_code=1;
 				break;
@@ -226,6 +220,20 @@ int main(int argc, char *argv[]){
 				HELP(NULL);
 		}
 	}
+	
+	if(optind > argc-1){
+		HELP("Error: need host\0");
+		exit_code=1;
+	}else if(optind == argc-2){
+		host.raw_port=argv[optind+1];
+		host.raw_host=argv[optind];
+	}else if(optind == argc-1)
+		host.raw_host=argv[optind];
+	else{
+		HELP("Error: invalid operand range\0");
+		exit_code=1;
+	}
+
 	if(exit_code != 0)
 		return exit_code;
 	if(host.raw_port==NULL){
