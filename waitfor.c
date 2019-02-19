@@ -30,16 +30,15 @@ struct host{
 
 
 void helpmsg(char *pname,char *s){
+	if(s != NULL){
+		fprintf(stderr,"%s\n",s);
+	}
 printf("Usage: %s <options> [host] [?port]\n\
 \t -h: display this help message\n\
 \t -t[secs]: set timeout in seconds\n\
 \t -s[msecs]: set sleep time between connection/ping attempts\n\
 \t -1[secs]: set ping timeout\n\
 \t -2[msecs]: set socket timeout\n",pname);
-	if(s != NULL){
-		fprintf(stderr,"%s",s);
-	}
-	fprintf(stderr,"\n");
 }
 
 
