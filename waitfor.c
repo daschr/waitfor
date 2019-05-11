@@ -22,18 +22,14 @@ struct config{
 struct host{
 	char *raw_host;
 	char *raw_port;
-	void *ip;
-	struct sockaddr *addr;
-	socklen_t addrlen;
-	int ip_type;
+	struct addrinfo *res;
 } host;
 
 
 void helpmsg(char *pname,char *s){
-	if(s != NULL){
+	if(s != NULL)
 		fprintf(stderr,"%s\n",s);
-	}
-printf("Usage: %s <options> [host] [?port]\n\
+	printf("Usage: %s <options> [host] [?port]\n\
 \t -h: display this help message\n\
 \t -t[secs]: set timeout in seconds\n\
 \t -s[msecs]: set sleep time between connection/ping attempts\n\
@@ -48,7 +44,7 @@ int8_t connectloop(void){
 	struct timeval timeout;
 	timeout.tv_sec  = config.socket_timeout/1000; 
 	timeout.tv_usec = config.socket_timeout%1000;
-	socket_d=socket(host.ip_type,SOCK_STREAM,0);
+	socket_d=socket(host.res->ai_family,SOCK_STREAM,0);
 	if(socket_d == -1){
 		fprintf(stderr,"Error: could not create socket!\n");
 		return 1;
@@ -58,7 +54,7 @@ int8_t connectloop(void){
 
 	if(config.wait_timeout != 0){
 		time_t start_time=time(NULL);
-		while(connect(socket_d,host.addr,host.addrlen)<0){
+		while(connect(socket_d,host.res->ai_addr,host.res->ai_addrlen)<0){
 			if(time(NULL) - start_time > config.wait_timeout){ 
 				ret_val=2;
 				break;
@@ -66,7 +62,7 @@ int8_t connectloop(void){
 			usleep(config.sleep_time);
 		}
 	}else
-		while(connect(socket_d,host.addr,host.addrlen)<0)
+		while(connect(socket_d,host.res->ai_addr,host.res->ai_addrlen)<0)
 			usleep(config.sleep_time);
 		
 	close(socket_d);
@@ -78,6 +74,7 @@ int8_t pingloop(void){
 	int8_t ret_val=0;
 
 	pingobj_t *ping_inst= ping_construct();
+	
 	if(ping_inst == NULL){
 		fprintf(stderr,"Error: could not instanciate ping!\n");
 		free(ping_inst);
@@ -88,7 +85,7 @@ int8_t pingloop(void){
 		free(ping_inst);
 		return 1;
 	}
-	if(ping_setopt(ping_inst,PING_OPT_AF,&(host.ip_type)) != 0){
+	if(ping_setopt(ping_inst,PING_OPT_AF,&(host.res->ai_family)) != 0){
 		fprintf(stderr,"%s\nError: could not set af type!\n",ping_get_error(ping_inst));
 		free(ping_inst);
 		return 1;
@@ -98,6 +95,7 @@ int8_t pingloop(void){
 		free(ping_inst);
 		return 1;
 	}
+
 	if(config.wait_timeout != 0){
 		time_t start_time=time(NULL);
 		while(1){
@@ -108,7 +106,7 @@ int8_t pingloop(void){
 				ret_val=2;
 				break;
 			}else if(e < 0){
-				printf("%s\n",ping_get_error(ping_inst));
+				printf("Error: %s\n",ping_get_error(ping_inst));
 				ret_val=1;
 				break;
 			}
@@ -120,7 +118,7 @@ int8_t pingloop(void){
 			if(e >=1)// host is up
 				break;
 			else if(e < 0){
-				printf("%s\n",ping_get_error(ping_inst));
+				printf("Error: %s\n",ping_get_error(ping_inst));
 				ret_val=1;
 				break;
 			}
@@ -128,24 +126,20 @@ int8_t pingloop(void){
 		}
 	}
 	ping_host_remove(ping_inst,host.raw_host);
-	free(ping_inst);
+	ping_destroy(ping_inst);
 	return ret_val;
 }
 
 int8_t set_ip_addr(void){
 	struct addrinfo hints;
-	struct addrinfo	*res;
-	memset(&hints,0,sizeof(struct addrinfo));
+	memset(&hints, 0 , sizeof(struct addrinfo));
+	
 	hints.ai_family = AF_UNSPEC;  
 	hints.ai_socktype = SOCK_STREAM; 
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;   
-	if( getaddrinfo(host.raw_host,host.raw_port,&hints,&res) != 0 || res == NULL)
+	if( getaddrinfo(host.raw_host,host.raw_port,&hints,&(host.res)) != 0 || host.res == NULL)
 		return 0;
-	host.addr=res->ai_addr;
-	host.addrlen=res->ai_addrlen;
-	host.ip_type=res->ai_family;
-	
 	return 1;
 }
 
@@ -169,6 +163,7 @@ int main(int argc, char *argv[]){
 	config.ping_timeout=1;
 	config.wait_timeout=0;
 	config.socket_timeout=2000;
+	host.res=NULL;
 	register int op;
 	register long buf;
 
@@ -235,22 +230,20 @@ int main(int argc, char *argv[]){
 
 	if(exit_code != 0)
 		return exit_code;
+	
+	if(!set_ip_addr()){
+		HELP("Error: erroneous host (or port)\0");
+		exit_code=1;
+	}	
+
 	if(host.raw_port==NULL){
-		if(set_ip_addr()){
-			if(pingloop() != 0)
-				exit_code=1;
-		}else{
-			HELP("Error: erroneous host\0");
+		if(pingloop() != 0)
 			exit_code=1;
-		}
 	}else{	
-		if(set_ip_addr()){
-			if(connectloop() != 0)
-				exit_code=1;
-		}else{
-			HELP("Error: erroneous host or port\0");
+		if(connectloop() != 0)
 			exit_code=1;
-		}
 	}
+	
+	freeaddrinfo(host.res);
 	return exit_code;
 }
