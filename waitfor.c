@@ -171,7 +171,7 @@ int main(int argc, char *argv[]){
 		switch(op){
 			case 'h':
 				HELP(NULL);
-				exit_code=1;
+				return 1;
 				break;
 			case 's':
 				if((buf=atol(optarg)) != -1)
