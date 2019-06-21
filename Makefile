@@ -10,5 +10,10 @@ comp:
 perm:
 	setcap cap_net_raw+ep waitfor
 clean:
-	rm -r waitfor
+	rm -f waitfor
 	bash -c "cd liboping; make clean"
+	rm -f deb/waitfor.deb deb/waitfor/usr/bin/waitfor
+
+package: waitfor
+	cp waitfor deb/waitfor/usr/bin/
+	bash -c "cd deb/ && dpkg -b waitfor waitfor.deb"
