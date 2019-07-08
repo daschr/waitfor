@@ -234,14 +234,16 @@ int main(int argc, char *argv[]){
 	if(!set_ip_addr()){
 		HELP("Error: erroneous host (or port)\0");
 		exit_code=1;
-	}	
+	}
 
-	if(host.raw_port==NULL){
-		if(pingloop() != 0)
-			exit_code=1;
-	}else{	
-		if(connectloop() != 0)
-			exit_code=1;
+	if(exit_code == 0){
+		if(host.raw_port==NULL){
+			if(pingloop() != 0)
+				exit_code=1;
+		}else{
+			if(connectloop() != 0)
+				exit_code=1;
+		}
 	}
 	
 	freeaddrinfo(host.res);
