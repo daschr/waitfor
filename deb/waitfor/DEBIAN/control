@@ -1,6 +1,6 @@
 Package: waitfor
-Version: 1.0.0
+Version: 1.1.0
 Maintainer: David Schramm <david.schramm@live.com>
 Description: wait untile host is reachable
 Homepage: https://github.com/daschr/waitfor
-Architecture: amd64
+Architecture: all
