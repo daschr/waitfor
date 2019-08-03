@@ -165,7 +165,6 @@ int main(int argc, char *argv[]){
 	config.socket_timeout=2000;
 	host.res=NULL;
 	register int op;
-	register long buf;
 
 	while((op=getopt(argc,argv,"hds:1:2:t:")) != -1){
 		switch(op){
