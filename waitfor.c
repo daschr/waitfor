@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <signal.h>
 #include <unistd.h>
 #include <string.h>
 #include <netdb.h>
@@ -25,7 +26,19 @@ struct host{
 	struct addrinfo *res;
 } host;
 
+int socket_d=-1;
+pingobj_t *ping_inst=NULL;
+
 int8_t debug=0;
+
+
+void interrupt_handler(int e){
+	if(socket_d != -1)
+		close(socket_d);
+	if(ping_inst != NULL)
+		ping_destroy(ping_inst);
+	exit(EXIT_FAILURE);
+}
 
 void helpmsg(char *pname,char *s){
 	if(s != NULL)
@@ -80,26 +93,26 @@ int8_t pingloop(void){
 	DBG("in pingloop");
 	int8_t ret_val=0;
 
-	pingobj_t *ping_inst= ping_construct();
+	ping_inst= ping_construct();
 	
 	if(ping_inst == NULL){
 		fprintf(stderr,"Error: could not instanciate ping!\n");
-		free(ping_inst);
+		ping_destroy(ping_inst);
 		return 1;
 	}
 	if(ping_setopt(ping_inst,PING_OPT_TIMEOUT,&config.ping_timeout) != 0){
 		fprintf(stderr,"%s\nError: could not instanciate ping timeout!\n",ping_get_error(ping_inst));
-		free(ping_inst);
+		ping_destroy(ping_inst);
 		return 1;
 	}
 	if(ping_setopt(ping_inst,PING_OPT_AF,&(host.res->ai_family)) != 0){
 		fprintf(stderr,"%s\nError: could not set af type!\n",ping_get_error(ping_inst));
-		free(ping_inst);
+		ping_destroy(ping_inst);
 		return 1;
 	}
 	if(ping_host_add(ping_inst,host.raw_host) != 0){
 		fprintf(stderr,"%s\nError: could not instanciate host to ping!\n",ping_get_error(ping_inst));
-		free(ping_inst);
+		ping_destroy(ping_inst);
 		return 1;
 	}
 
@@ -134,7 +147,6 @@ int8_t pingloop(void){
 			usleep(config.sleep_time);
 		}
 	}
-	ping_host_remove(ping_inst,host.raw_host);
 	ping_destroy(ping_inst);
 	return ret_val;
 }
@@ -155,11 +167,14 @@ int8_t set_ip_addr(void){
 int main(int argc, char *argv[]){
 	if(argc == 1){
 		HELP(NULL);
-		return 1;
+		return EXIT_FAILURE;
 	}
+	
+	signal(SIGINT,interrupt_handler);
+	signal(SIGTERM,interrupt_handler);
 
 	int8_t exit_code=0;
-	config.sleep_time=200;
+	config.sleep_time=200000;
 	config.ping_timeout=1.0;
 	config.wait_timeout=0;
 	config.socket_timeout=2000;
