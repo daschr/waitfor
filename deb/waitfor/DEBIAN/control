@@ -1,5 +1,5 @@
 Package: waitfor
-Version: 1.2.0
+Version: 1.3.0
 Maintainer: David Schramm <david.schramm@live.com>
 Description: wait untile host is reachable
 Homepage: https://github.com/daschr/waitfor

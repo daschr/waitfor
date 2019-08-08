@@ -11,6 +11,10 @@
 #include <errno.h>
 extern int h_errno;
 
+#define UNREACH_EC 1
+#define INT_EC 2
+#define OTHER_EC 3
+
 #define HELP(X) helpmsg(argv[0],X)
 #define DBG(X) if(debug) fputs("[debug] "X"\n",stderr)
 struct config{
@@ -37,7 +41,7 @@ void interrupt_handler(int e){
 		close(socket_d);
 	if(ping_inst != NULL)
 		ping_destroy(ping_inst);
-	exit(EXIT_FAILURE);
+	exit(INT_EC);
 }
 
 void helpmsg(char *pname,char *s){
@@ -63,7 +67,7 @@ int8_t connectloop(void){
 	socket_d=socket(host.res->ai_family,SOCK_STREAM,0);
 	if(socket_d == -1){
 		fprintf(stderr,"Error: could not create socket!\n");
-		return 1;
+		return OTHER_EC;
 	}
 	setsockopt(socket_d, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
@@ -74,7 +78,7 @@ int8_t connectloop(void){
 		time_t start_time=time(NULL);
 		while(connect(socket_d,host.res->ai_addr,host.res->ai_addrlen)<0){
 			if(time(NULL) - start_time > config.wait_timeout){ 
-				ret_val=2;
+				ret_val=UNREACH_EC;
 				break;
 			}
 			usleep(config.sleep_time);
@@ -98,22 +102,22 @@ int8_t pingloop(void){
 	if(ping_inst == NULL){
 		fprintf(stderr,"Error: could not instanciate ping!\n");
 		ping_destroy(ping_inst);
-		return 1;
+		return OTHER_EC;
 	}
 	if(ping_setopt(ping_inst,PING_OPT_TIMEOUT,&config.ping_timeout) != 0){
 		fprintf(stderr,"%s\nError: could not instanciate ping timeout!\n",ping_get_error(ping_inst));
 		ping_destroy(ping_inst);
-		return 1;
+		return OTHER_EC;
 	}
 	if(ping_setopt(ping_inst,PING_OPT_AF,&(host.res->ai_family)) != 0){
 		fprintf(stderr,"%s\nError: could not set af type!\n",ping_get_error(ping_inst));
 		ping_destroy(ping_inst);
-		return 1;
+		return OTHER_EC;
 	}
 	if(ping_host_add(ping_inst,host.raw_host) != 0){
 		fprintf(stderr,"%s\nError: could not instanciate host to ping!\n",ping_get_error(ping_inst));
 		ping_destroy(ping_inst);
-		return 1;
+		return OTHER_EC;
 	}
 
 	if(config.wait_timeout != 0){
@@ -124,11 +128,11 @@ int8_t pingloop(void){
 			if(e >=1) //host is up
 				break;
 			else if(time(NULL) -start_time > config.wait_timeout){// timeout arrived
-				ret_val=2;
+				ret_val=UNREACH_EC;
 				break;
 			}else if(e < 0){
 				printf("Error: %s\n",ping_get_error(ping_inst));
-				ret_val=1;
+				ret_val=OTHER_EC;
 				break;
 			}
 			usleep(config.sleep_time);
@@ -141,7 +145,7 @@ int8_t pingloop(void){
 				break;
 			else if(e < 0){
 				printf("Error: %s\n",ping_get_error(ping_inst));
-				ret_val=1;
+				ret_val=OTHER_EC;
 				break;
 			}
 			usleep(config.sleep_time);
@@ -167,7 +171,7 @@ int8_t set_ip_addr(void){
 int main(int argc, char *argv[]){
 	if(argc == 1){
 		HELP(NULL);
-		return EXIT_FAILURE;
+		return OTHER_EC;
 	}
 	
 	signal(SIGINT,interrupt_handler);
@@ -185,7 +189,7 @@ int main(int argc, char *argv[]){
 		switch(op){
 			case 'h':
 				HELP(NULL);
-				return 1;
+				return OTHER_EC;
 				break;
 			case 'd':
 				debug=1;
@@ -193,33 +197,33 @@ int main(int argc, char *argv[]){
 			case 's':
 				if(sscanf(optarg,"%lu",&(config.sleep_time)) != 1){
 					HELP("Error: -s: invalid argument!\0");
-					exit_code=1;
+					exit_code=OTHER_EC;
 				}
 				break;
 			case '1':
 				if(sscanf(optarg,"%lf",&(config.ping_timeout)) != 1){
 					HELP("Error: -1: invalid argument!\0");
-					exit_code=1;
+					exit_code=OTHER_EC;
 				}
 				break;
 			case '2':
 				if(sscanf(optarg,"%lu",&(config.socket_timeout))!= 1){
 					HELP("Error: -2: invalid argument!\0");
-					exit_code=1;
+					exit_code=OTHER_EC;
 				}
 				break;
 
 			case 't':
 				if(sscanf(optarg,"%lu",&(config.wait_timeout)) != 1){
 					HELP("Error: -t: invalid argument!\0");
-					exit_code=1;
+					exit_code=OTHER_EC;
 				}
 				break;
 			case '?':
-				exit_code=1;
+				exit_code=OTHER_EC;
 				break;
 			default:
-				exit_code=1;
+				exit_code=OTHER_EC;
 				HELP(NULL);
 		}
 	}
@@ -228,7 +232,7 @@ int main(int argc, char *argv[]){
 			config.sleep_time, config.ping_timeout,config.socket_timeout,config.wait_timeout);	
 	if(optind > argc-1){
 		HELP("Error: need host\0");
-		exit_code=1;
+		exit_code=OTHER_EC;
 	}else if(optind == argc-2){
 		host.raw_port=argv[optind+1];
 		host.raw_host=argv[optind];
@@ -236,7 +240,7 @@ int main(int argc, char *argv[]){
 		host.raw_host=argv[optind];
 	else{
 		HELP("Error: invalid operand range\0");
-		exit_code=1;
+		exit_code=OTHER_EC;
 	}
 
 	if(exit_code != 0)
@@ -244,17 +248,14 @@ int main(int argc, char *argv[]){
 	
 	if(!set_ip_addr()){
 		HELP("Error: erroneous host (or port)\0");
-		exit_code=1;
+		exit_code=OTHER_EC;
 	}
 
 	if(exit_code == 0){
-		if(host.raw_port==NULL){
-			if(pingloop() != 0)
-				exit_code=1;
-		}else{
-			if(connectloop() != 0)
-				exit_code=1;
-		}
+		if(host.raw_port==NULL)
+			exit_code=pingloop();
+		else
+			exit_code= connectloop();
 	}
 	
 	freeaddrinfo(host.res);
