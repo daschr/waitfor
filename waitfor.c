@@ -9,14 +9,27 @@
 #include <sys/socket.h>
 #include <oping.h>
 #include <errno.h>
-extern int h_errno;
 
-#define UNREACH_EC 1
-#define INT_EC 2
-#define OTHER_EC 3
+//sleep time for loop
+#define SLEEP_TIME 200000
+
+//timeout for ping attempt
+#define PING_TIMEOUT 1.0
+
+//timeout for tcp connect
+#define SOCKET_TIMEOUT 2000
+
+//time after a host is beeing viewed as unreachable (inf = 0)
+#define WAIT_TIMEOUT 0 
+
+
+enum { UNREACH_EC=1, INT_EC, OTHER_EC };
 
 #define HELP(X) helpmsg(argv[0],X)
 #define DBG(X) if(debug) fputs("[debug] "X"\n",stderr)
+
+
+// holds parsed config
 struct config{
 	unsigned long sleep_time;
 	double ping_timeout;
@@ -24,18 +37,21 @@ struct config{
 	unsigned long wait_timeout;
 }config;
 
+//holds host information
 struct host{
 	char *raw_host;
 	char *raw_port;
 	struct addrinfo *res;
 } host;
 
+//needed for cleanup
 int socket_d=-1;
 pingobj_t *ping_inst=NULL;
 
+//needed for debugging
 int8_t debug=0;
 
-
+//cleans up
 void interrupt_handler(int e){
 	if(socket_d != -1)
 		close(socket_d);
@@ -178,10 +194,10 @@ int main(int argc, char *argv[]){
 	signal(SIGTERM,interrupt_handler);
 
 	int8_t exit_code=0;
-	config.sleep_time=200000;
-	config.ping_timeout=1.0;
-	config.wait_timeout=0;
-	config.socket_timeout=2000;
+	config.sleep_time=SLEEP_TIME;
+	config.ping_timeout=PING_TIMEOUT;
+	config.wait_timeout=WAIT_TIMEOUT;
+	config.socket_timeout=SOCKET_TIMEOUT;
 	host.res=NULL;
 	register int op;
 
@@ -196,26 +212,26 @@ int main(int argc, char *argv[]){
 				break;
 			case 's':
 				if(sscanf(optarg,"%lu",&(config.sleep_time)) != 1){
-					HELP("Error: -s: invalid argument!\0");
+					HELP("Error: -s: invalid argument!");
 					exit_code=OTHER_EC;
 				}
 				break;
 			case '1':
 				if(sscanf(optarg,"%lf",&(config.ping_timeout)) != 1){
-					HELP("Error: -1: invalid argument!\0");
+					HELP("Error: -1: invalid argument!");
 					exit_code=OTHER_EC;
 				}
 				break;
 			case '2':
 				if(sscanf(optarg,"%lu",&(config.socket_timeout))!= 1){
-					HELP("Error: -2: invalid argument!\0");
+					HELP("Error: -2: invalid argument!");
 					exit_code=OTHER_EC;
 				}
 				break;
 
 			case 't':
 				if(sscanf(optarg,"%lu",&(config.wait_timeout)) != 1){
-					HELP("Error: -t: invalid argument!\0");
+					HELP("Error: -t: invalid argument!");
 					exit_code=OTHER_EC;
 				}
 				break;
@@ -226,12 +242,16 @@ int main(int argc, char *argv[]){
 				exit_code=OTHER_EC;
 				HELP(NULL);
 		}
+		if(exit_code)
+			break;
 	}
+
 	if(debug)
 		fprintf(stderr,"[debug] parsed:\n\t sleep_timeout=%lu ping_timeout=%lf socket_timeout=%lu wait_timeout=%lu\n",
 			config.sleep_time, config.ping_timeout,config.socket_timeout,config.wait_timeout);	
+
 	if(optind > argc-1){
-		HELP("Error: need host\0");
+		fputs("Error: need host\n",stderr);
 		exit_code=OTHER_EC;
 	}else if(optind == argc-2){
 		host.raw_port=argv[optind+1];
@@ -239,7 +259,7 @@ int main(int argc, char *argv[]){
 	}else if(optind == argc-1)
 		host.raw_host=argv[optind];
 	else{
-		HELP("Error: invalid operand range\0");
+		fputs("Error: invalid operand range\n",stderr);
 		exit_code=OTHER_EC;
 	}
 
@@ -247,7 +267,7 @@ int main(int argc, char *argv[]){
 		return exit_code;
 	
 	if(!set_ip_addr()){
-		HELP("Error: erroneous host (or port)\0");
+		fputs("Error: erroneous host (or port)\n",stderr);
 		exit_code=OTHER_EC;
 	}
 
